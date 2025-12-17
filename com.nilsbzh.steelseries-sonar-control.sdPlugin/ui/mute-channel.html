@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mute Channel</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 12px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+      }
+      select {
+        width: 100%;
+        padding: 6px;
+      }
+      .hint {
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="channel">Sonar channel</label>
+    <select id="channel">
+      <option value="game">Game</option>
+      <option value="chat">Chat</option>
+      <option value="media">Media</option>
+      <option value="aux">Aux</option>
+      <option value="mic">Mic</option>
+    </select>
+
+    <div class="hint">Choisis le canal Sonar à muter/démuter.</div>
+
+    <script>
+      let settings = {};
+      let websocket = null;
+      let context = null;
+
+      function setSelectFromSettings() {
+        document.getElementById("channel").value = settings.channel || "game";
+      }
+
+      function sendSettings() {
+        if (!websocket || !context) return;
+
+        websocket.send(
+          JSON.stringify({
+            event: "setSettings",
+            context,
+            payload: settings,
+          })
+        );
+      }
+
+      window.connectElgatoStreamDeckSocket = function (
+        inPort,
+        inPropertyInspectorUUID,
+        inRegisterEvent,
+        inInfo,
+        inActionInfo
+      ) {
+        const actionInfo = JSON.parse(inActionInfo);
+        context = actionInfo.context;
+
+        // charge tout de suite ce qu'on a déjà dans actionInfo
+        settings =
+          actionInfo.payload && actionInfo.payload.settings
+            ? actionInfo.payload.settings
+            : {};
+        setSelectFromSettings();
+
+        websocket = new WebSocket("ws://127.0.0.1:" + inPort);
+
+        websocket.onopen = () => {
+          // register PI
+          websocket.send(
+            JSON.stringify({
+              event: inRegisterEvent,
+              uuid: inPropertyInspectorUUID,
+            })
+          );
+
+          // ✅ demander explicitement les settings persistés
+          websocket.send(
+            JSON.stringify({
+              event: "getSettings",
+              context,
+            })
+          );
+        };
+
+        websocket.onmessage = (evt) => {
+          const msg = JSON.parse(evt.data);
+
+          if (msg.event === "didReceiveSettings" && msg.context === context) {
+            settings = msg.payload.settings || {};
+            setSelectFromSettings();
+          }
+        };
+      };
+
+      document.getElementById("channel").addEventListener("change", (e) => {
+        settings.channel = e.target.value;
+        sendSettings();
+      });
+    </script>
+  </body>
+</html>
